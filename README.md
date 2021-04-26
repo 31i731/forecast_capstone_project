@@ -1,1 +1,1 @@
-# forecast_capstone_project
+# Capstone project 'S.U.N'
