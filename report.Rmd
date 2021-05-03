@@ -9,7 +9,7 @@ What problem are we trying to address?
 
 Predict amount of sun units needed to produce enough energy
 
-# Preprocessing, cleansing, imputation
+# Setup
 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 suppressPackageStartupMessages({
@@ -29,13 +29,11 @@ Loading the data:
 ```{r}
 # 'sun' - sensor data, otherwise the energy produced
 building_2_sun <- readRDS("data/Building 2 sun.rds")
-building_2 <- readRDS("data/Building 2.rds")
-
+building_2     <- readRDS("data/Building 2.rds")
 building_5_sun <- readRDS("data/Building 5 sun.rds")
-building_5 <- readRDS("data/Building 5.rds")
-
+building_5     <- readRDS("data/Building 5.rds")
 building_8_sun <- readRDS("data/Building 8 sun.rds")
-building_8 <- readRDS("data/Building 8.rds")
+building_8     <- readRDS("data/Building 8.rds")
 
 setDT(building_2_sun)
 setDT(building_2)
@@ -53,6 +51,41 @@ setnames(building_8, "1498763", "energy_produced")
 ```
 
 All the datasets here have the same structure (first column - datetime, second column - number, units of sun detected/produced)
+
+# Preprocessing, cleansing, imputation
+
+## Outliers, NAs
+
+```{r}
+# Building 2
+summary(building_2_sun[,sun])
+summary(building_2[,energy_produced])
+
+# Building 5
+summary(building_5_sun[,sun])
+summary(building_5[,energy_produced])
+
+# Building 8
+summary(building_8_sun[,sun])
+summary(building_8[,energy_produced])
+
+```
+
+From the summary function we can see that there are no NA values.
+Regarding the outliers, at building 2 there are some really extreme values, but the rest seems to be fine.
+
+If we take a closer look at building 2:
+
+```{r}
+plot_ly(building_2, y=~energy_produced, type="box")
+```
+
+We can see that indeed there are some extreme values. As on the other building the range of produced energy is between 0 and 100, we have decided to cut off the outliers here based on this criteria.
+
+```{r}
+building_2 <- building_2[energy_produced < 100 & energy_produced >= 0]
+```
+
 
 ## Aggregating
 
@@ -127,41 +160,6 @@ autoplot(decompose(building_8_monthly_ts, type="additive"))
 #autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
 ```
 
-## Outliers, NAs
-
-```{r}
-str(building_2_sun_monthly)
-summary(building_2_sun_monthly)
-boxplot(building_2_sun_monthly$monthly_avg)
-
-str(building_2_monthly)
-summary(building_2_monthly)
-boxplot(building_2_monthly$monthly_avg)
-
-str(building_5_sun_monthly)
-summary(building_5_sun_monthly)
-boxplot(building_5_sun_monthly$monthly_avg)
-
-str(building_5_monthly)
-summary(building_5_monthly)
-boxplot(building_5_monthly$monthly_avg)
-
-str(building_8_sun_monthly)
-summary(building_8_sun_monthly)
-boxplot(building_8_sun_monthly$monthly_avg)
-
-str(building_8_monthly)
-summary(building_8_monthly)
-boxplot(building_8_monthly$monthly_avg)
-
-adf.test(building_2_monthly_ts)
-adf.test(building_5_monthly_ts)
-adf.test(building_8_monthly_ts)
-
-
-```
-
--   no NA values
 
 ## Weather data
 
