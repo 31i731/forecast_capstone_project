@@ -23,7 +23,7 @@ suppressPackageStartupMessages({
   library(dplyr) 
   library(tseries)
   library(plotly)
-  library(tidyverse)
+  #library(tidyverse)
   library(nortest)
 })
 ```
@@ -563,6 +563,15 @@ plot(forecast(building_8_weekly_ts.fc))
 
 ## Arima/sarima
 
+Sarima
+
+```{r}
+sarima_forecast <- sarima.for(training, n.ahead = length(testing),
+ p=0,d=1,q=1, P=1, D=1, Q=0, S=12)
+```
+
+Arima
+
 ```{r}
 ggAcf(building_8_weekly_ts)
 
@@ -576,15 +585,14 @@ plot(forecast(arima_optimal, h=365.25/7))
 
 library(astsa)
 
-sarima_forecast <- sarima.for(training, n.ahead = length(testing),
-                              p=0,d=1,q=1, P=1, D=1, Q=0)
+#sarima_forecast <- sarima.for(training, n.ahead = length(testing), p=0,d=1,q=1, P=1, D=1, Q=0)
 ```
 
 ```{r}
-arima_optimal <- auto.arima(training, max.D = 5)
-arima_optimal
+arima_basic <- auto.arima(training, max.D = 5)
+arima_basic
 
-plot(forecast(arima_optimal, h=365.25/7))
+plot(forecast(arima_basic, h=365.25/7))
 lines(testing, col="red")
 ```
 
@@ -599,3 +607,55 @@ todo:
     -   sun hours
 
     -   cloudcover
+
+Forecast with cloud cover:
+
+```{r}
+arima_cloud <- auto.arima(training, xreg=matrix(weather[1:length(training),cloudcover]))
+arima_optimal
+
+plot(forecast(arima_cloud, h=365.25/7, xreg=matrix(weather[109:length(weather),cloudcover])))
+lines(testing, col="red")
+```
+
+```{r}
+#length(training)
+matrix(weather[1:108, uvIndex], weather[1:108, cloudcover])
+```
+
+Forecast with UV index:
+
+```{r}
+arima_uv <- auto.arima(
+                    training, 
+                    xreg = as.matrix(weather[1:108, .(uvIndex, cloudcover)])
+                    )
+arima_uv
+```
+
+```{r}
+plot(forecast(
+  arima_uv, 
+  h=52, 
+  xreg = as.matrix(weather[109:length(weather), .(uvIndex, cloudcover)])
+  ))
+#lines(testing, col="red")
+
+plot(forecast(arima_cloud, h=365.25/7, xreg=matrix(weather[109:length(weather),cloudcover])))
+```
+
+```{r}
+fc <- forecast(arima_uv, h=365.25/7, xreg=matrix(weather[109:length(weather),uvIndex]))
+fc$mean
+length(fc$mean)
+```
+
+```{r}
+#error estimation& accumulation
+plot(x=1:length(fc$mean), cumsum(abs(fc$mean)),type="l", col="red")
+# lines(x=1:length(testing), cumsum(abs(arima_cloud$fitted - testing)),type="l", 
+# col="green")
+# lines(x=1:length(testing), cumsum(abs(arima_uv$fitted - testing)),type="l", 
+# col="brown")
+lines(x=1:length(testing), cumsum(abs(sarima_forecast$pred)),type="l", col="orange")
+```
