@@ -1,0 +1,659 @@
+---
+title: "Solar Panel Forecast"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Project plan
+
+What problem are we trying to address?
+
+Predict amount of sun units needed to produce enough energy
+
+# Setup
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(data.table)
+  library(forecast)
+  library(tidyr)
+  library(lubridate)
+  library(dplyr) 
+  library(tseries)
+  library(plotly)
+  #library(tidyverse)
+  library(nortest)
+  library(astsa)
+  library(ie2misc)
+})
+```
+
+Loading the data:
+
+```{r}
+# 'sun' - sensor data, otherwise the energy produced
+building_2_sun <- readRDS("data/Building 2 sun.rds")
+building_2     <- readRDS("data/Building 2.rds")
+building_5_sun <- readRDS("data/Building 5 sun.rds")
+building_5     <- readRDS("data/Building 5.rds")
+building_8_sun <- readRDS("data/Building 8 sun.rds")
+building_8     <- readRDS("data/Building 8.rds")
+setDT(building_2_sun)
+setDT(building_2)
+setDT(building_5_sun)
+setDT(building_5)
+setDT(building_8_sun)
+setDT(building_8)
+setnames(building_2_sun, "1302611", "sun")
+setnames(building_2, "1490017", "energy_produced")
+setnames(building_5_sun, "1328370", "sun")
+setnames(building_5, "1328347", "energy_produced")
+setnames(building_8_sun, "1302169", "sun")
+setnames(building_8, "1498763", "energy_produced")
+# weather data
+weather <- fread("data/vienna.csv", na.strings = c("No moonrise", "No moonset"))
+```
+
+# EDA
+
+Summary
+
+```{r}
+# Building 2
+summary(building_2_sun[,sun])
+summary(building_2[,energy_produced])
+# Building 5
+summary(building_5_sun[,sun])
+summary(building_5[,energy_produced])
+# Building 8
+summary(building_8_sun[,sun])
+summary(building_8[,energy_produced])
+```
+
+From the summary function we can see that there are no NA values. Regarding the outliers, at building 2 there are some really extreme values, but the rest seems to be fine.
+
+### Weather data description
+
+We have acquired our weather data from https://www.worldweatheronline.com/developer/api/docs/historical-weather-api.aspx using the Python script called *importWeatherData.py* attached in the folder. The past weather API allows us to retrieve weather data from specified time period and location. It also supports retrieval of data for multiple locations at once. In our case, we only needed data from Vienna because all the three buildings are in Vienna.
+Also, we have retrieved data for every 24 hours(every day) because it was the most convenient time range we could use.
+
+Let's examine how it looks like:
+
+```{r}
+summary(weather)
+```
+
+```{r}
+str(weather)
+```
+
+We can see that this dataset includes many features like maximum and minimum temperature, wind data and moon data, precipitation, etc., which form a complete overview of weather in Vienna. Not all of these features are relevant for our purpose, but we will deal with this in the prepocessing part.
+
+## Building 2
+
+Sun radiation:
+
+```{r}
+building_2_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    line = list(color='#ff7f0e')
+  )
+```
+
+Energy produced
+
+```{r}
+plot_ly(
+    data=building_2,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    line = list(color = '#1f77b4')
+)
+```
+
+We can see that this data is not normal, because it has some really extreme values. So we will have to deal with outliers somehow.
+
+## Building 5
+
+Sun radiation:
+
+```{r}
+building_5_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    line = list(color='#ff7f0e')
+  )
+```
+
+Energy produced
+
+```{r}
+plot_ly(
+    data=building_5,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    line = list(color = '#1f77b4')
+)
+```
+
+This looks good, and the plot for building 2 should also look similar to this.
+
+Plotting sun radiation vs energy produced on one plot
+
+```{r}
+building_5_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun radiation",
+    line = list(color='#ff7f0e')
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_5,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="energy produced",
+    yaxis = "y2",
+    line = list(color = '#1f77b4')
+  ) %>%
+  layout(
+    title = "Building 5",
+    yaxis2 = list(
+      tickfont = list(color = '#ff7f0e'), 
+      overlaying = "y",
+      side = "right",
+      title = "second y axis - energy"
+    )
+  )
+```
+
+By rescaling the two data, we plotted them together. And it clearly shows that when the sun radiation is higher, there is a proportional growth in the produced energy.
+
+## Building 8
+
+```{r}
+building_8 %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="enery produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_8_sun,
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun",
+    yaxis = "y2"
+  ) %>%
+  layout(
+    title = "Building 8",
+    yaxis2 = list(
+      tickfont = list(color = "orange"), # color of 2nd y axis
+      overlaying = "y",
+      side = "right",
+      title = "sun radiation" # title of 2nd y axis
+    )
+  )
+```
+
+We can again see that the sun radiation and energy produced is tightly linked together.
+
+Aggregated:
+
+```{r}
+building_8[, .(energy_produced=sum(energy_produced)),
+              by=.(timestamp=floor_date(timestamp, "weeks"))] %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="enery produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_8_sun[, .(sun=sum(sun)),
+                        by=.(timestamp=floor_date(timestamp, "weeks"))],
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun",
+    yaxis = "y2"
+  ) %>%
+  layout(
+    title = "Building 8",
+    yaxis2 = list(
+      tickfont = list(color = "orange"), # color of 2nd y axis
+      overlaying = "y",
+      side = "right",
+      title = "sun radiation" # title of 2nd y axis
+    )
+  )
+```
+
+But are there maybe other factors that could influence the energy production?
+
+## Weather
+
+Let's try to plot how the clouds influence the produced energy:
+
+```{r}
+monthly_weather <- weather[, .(monthly_avg=mean(cloudcover)),
+                           by=.(date=floor_date(date_time, "weeks"))]
+monthly_weather %>%
+  plot_ly(
+    x=~date,
+    y=~monthly_avg,
+    hoverinfo= "text",
+    name="Monthly cloudcover",
+    type="scatter",
+    mode="lines+markers",
+    marker=list(size=0.5)
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_5_sun[, .(daily_avg=mean(sun)), 
+                        by=.(day=floor_date(timestamp, "weeks"))],
+    x=~day,
+    y=~daily_avg,
+    type="scatter",
+    mode="lines",
+    name="Monthly average sun"
+  )
+```
+
+We can see that our weather data is accurate, because when there is a higher cloudcover, there is less sunshine.
+
+
+# Preprocessing
+
+Based on the EDA, we can see that we have data points recorded every 15 minutes. We dedcide that it is sufficient to use weekly data for our forecast.
+
+## Outliers, NAs
+
+### Building 2
+
+If we take a closer look at building 2:
+
+```{r}
+plot_ly(building_2, y=~energy_produced, type="box")
+```
+
+We can see that indeed there are some extreme values.
+
+```{r}
+building_2 %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="energy produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_2_sun,
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    opacity=0.5,
+    name="sun"
+  )
+```
+
+If we plot both the energy produced and the sun radiation, we can see that there is nothing extreme anomaly in the sunshine, therefore those outliers cannot be explained and most likely are wrong values.
+
+As on the other building the range of produced energy is between 0 and 100, we have decided to cut off the outliers here based on this criteria.
+
+```{r}
+building_2 <- building_2[energy_produced < 100 & energy_produced >= 0]
+```
+
+### Weather
+
+In order to be able to merge the data later on, we have to change the type of date_time column to POSIXct:
+```{r}
+weather[,date_time := as.POSIXct(date_time, format = "%d/%m/%Y")] # 31/08/2016
+```
+
+We notice that there is a column called "location". This is due to the Weather API support for downloading data from multiple locations in the same dataset. As the location is always the same (Vienna), we decide to drop it.
+```{r}
+weather[,location := NULL]
+```
+
+Check if there are missing values:
+```{r}
+colSums(is.na(weather))
+```
+We have some missing values in our weather dataset. However, these values are not really relevant as they are only in columns "moonrise" and "moonset". We will later deal with this.
+
+
+## Merging the data
+
+We have to merge each of our building datasets with the weather data we acquired. We do this in order to be able to use features from the weather data for our forecasting.
+As we have 2 datasets per each building, one with sun data and the other with energy data, we first have to merge them and then we can add the weather data.
+We merge the datasets based on the timestamp. This is why we first need to aggregate building data daily.
+
+The process for every building is as follows:
+
+#### Building 2
+```{r}
+b2_joined <- left_join(building_2, building_2_sun, 
+                       by = c("timestamp" = "timestamp"))
+summary(b2_joined)
+# aggregate daily
+building2 <- b2_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building2)
+building2_weather <- left_join(building2, weather, 
+                               by = c("Day" = "date_time"))
+
+```
+
+#### Building 5
+
+```{r}
+b5_joined <- left_join(building_5, building_5_sun, 
+                       by = c("timestamp" = "timestamp"))
+b5_joined <- na.omit(b5_joined) # remove the last day --> bc it has NAs
+summary(b5_joined)
+# aggregate daily
+building5 <- b5_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building5)
+building5_weather <- left_join(building5, weather, 
+                               by = c("Day" = "date_time"))
+```
+
+
+#### Building 8
+
+```{r}
+b8_joined <- left_join(building_8, building_8_sun, 
+                       by = c("timestamp" = "timestamp"))
+summary(b8_joined)
+# aggregate daily
+building8 <- b8_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building8)
+building8_weather <- left_join(building8, weather, 
+                               by = c("Day" = "date_time"))
+```
+
+This is how the dataset looks now. It has the amount of sun and energy produced and all other variables from the weather data.
+
+
+# Feature engineering
+
+There are some variables which wouldn't be important for our forecast. As we want to predict energy which highly depends on amount of sun during the day, features like wind temperature, humidity, pressure, visibility, moon illumination and moonrise are not really relevant in this case.
+Based on our understanding of the domain, important predictors for the energy would be *sun, uv index, sun hour and cloud cover* because these are the variables which may influence the amount of sun and at the same time the amount of generated energy.
+Therefore, we decide to keep only these features and discard the others.
+
+Building 2:
+```{r}
+# final building 2 aggregated weekly
+building2 <- building2_weather[, .(sun=sum(daily_total_sun),
+                                   energy=sum(daily_total_energy),
+                                   sunHour=sum(sunHour),
+                                   uvIndex=sum(uvIndex),
+                                   cloudcover=sum(cloudcover)),
+                       by=.(Week=floor_date(Day, "weeks"))]
+building2
+```
+
+Building 5:
+```{r}
+# final building 5 aggregated weekly
+building5 <- building5_weather[, .(sun=sum(daily_total_sun),
+                                   energy=sum(daily_total_energy),
+                                   sunHour=sum(sunHour),
+                                   uvIndex=sum(uvIndex),
+                                   cloudcover=sum(cloudcover)),
+                       by=.(Week=floor_date(Day, "weeks"))]
+building5
+```
+
+Building 8:
+```{r}
+# final building 8 aggregated weekly
+building8 <- building8_weather[, .(sun=sum(daily_total_sun),
+                                   energy=sum(daily_total_energy),
+                                   sunHour=sum(sunHour),
+                                   uvIndex=sum(uvIndex),
+                                   cloudcover=sum(cloudcover)),
+                       by=.(Week=floor_date(Day, "weeks"))]
+building8
+```
+
+Creating ts objects so that we can use them for modelling:
+```{r}
+building_2_weekly_ts <- ts(building2, frequency = 52, start = c(2016,8))
+building_5_weekly_ts <- ts(building5, frequency = 52, start = c(2016,8))
+building_8_weekly_ts <- ts(building8, frequency = 52, start = c(2016,8))
+```
+
+```{r}
+ggAcf(building_8_weekly_ts)
+```
+
+```{r}
+############# Daily data aggregated
+building_2_sun_daily <- building_2_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_2_daily <- building_2[, .(daily_sum=sum(energy_produced)),
+                                 by=.(Day=floor_date(timestamp, "days"))]
+building_5_sun_daily <- building_5_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_5_daily <- building_5[, .(daily_sum=sum(energy_produced)),
+                                 by=.(Day=floor_date(timestamp, "days"))]
+building_8_sun_daily <- building_8_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_8_daily <- building_8[, .(daily_sum=sum(energy_produced)),
+                                by=.(Day=floor_date(timestamp, "days"))]
+############# Weekly data aggregated
+building_2_sun_weekly <- building_2_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_2_weekly <- building_2[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+building_5_sun_weekly <- building_5_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_5_weekly <- building_5[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+building_8_sun_weekly <- building_8_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_8_weekly <- building_8[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+############# Monthly data aggregated
+building_2_sun_monthly <- building_2_sun[, .(monthly_sum=sum(sun)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_2_monthly <- building_2[, .(monthly_sum=sum(energy_produced)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_5_sun_monthly <- building_5_sun[, .(monthly_sum=sum(sun)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_5_monthly <- building_5[, .(monthly_sum=sum(energy_produced)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_8_sun_monthly <- building_8_sun[, .(monthly_sum=sum(sun)),
+              by=.(Month=floor_date(timestamp, "months"))]
+building_8_monthly <- building_8[, .(monthly_sum=sum(energy_produced)),
+              by=.(Month=floor_date(timestamp, "months"))]
+```
+
+# Modelling
+
+## Time series and decomposing
+
+```{r}
+#------------------------ Time series and decomposing
+####### Monthly
+building_2_monthly_ts = ts(building_2_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+autoplot(building_2_monthly_ts)
+autoplot(decompose(building_2_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+building_5_monthly_ts = ts(building_5_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+autoplot(building_5_monthly_ts)
+autoplot(decompose(building_5_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+building_8_monthly_ts = ts(building_8_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+autoplot(building_8_monthly_ts)
+autoplot(decompose(building_8_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+####### Weekly
+building_2_weekly_ts = ts(building_2_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+autoplot(building_2_weekly_ts)
+autoplot(decompose(building_2_weekly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+building_5_weekly_ts = ts(building_5_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+autoplot(building_5_weekly_ts)
+autoplot(decompose(building_5_weekly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+building_8_weekly_ts = ts(building_8_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+autoplot(building_8_weekly_ts)
+autoplot(decompose(building_8_weekly_ts, type="additive"))
+```
+
+
+```{r}
+#building_2_weekly_ts <- ts(building2, frequency = 52, start = c(2016,8))
+#autoplot(building_2_weekly_ts)
+autoplot(decompose(building_2_weekly_ts[,"energy"], type="additive"))
+```
+
+### Checking for stationarity
+
+```{r}
+adf.test(building_2_monthly_ts)
+adf.test(building_5_monthly_ts)
+adf.test(building_8_monthly_ts)
+```
+
+H0: stationary
+
+H1: not stationary
+
+-\> all 3 are stationary
+
+
+We decide to try out different models first on building 2 and then we choose the best performing model to use on other buildings as well.
+
+## Split into train/test
+```{r}
+# building 2
+training_b2 <- window(building_2_weekly_ts, start=c(2016,8),end= c(2018,11))
+testing_b2 <- window(building_2_weekly_ts, start=c(2018,12) )
+
+# building 5
+training_b5 <- window(building_5_weekly_ts, start=c(2016,8),end= c(2018,11))
+testing_b5 <- window(building_5_weekly_ts, start=c(2018,12) )
+
+# building 8
+training_b8 <- window(building_8_weekly_ts, start=c(2016,8),end= c(2018,11))
+testing_b8 <- window(building_8_weekly_ts, start=c(2018,12) )
+```
+
+## Arima
+
+We first try out the most basic arima model on building 2:
+```{r}
+arima_basic <- auto.arima(training_b2[,"energy"])
+plot(forecast(arima_basic, h=52))
+lines(testing_b2[,"energy"], col="red")
+```
+It is not too bad, but also not so good. There is a point at which it is completely unable to capture amount of sun.
+
+## Sarima
+
+We try out a Sarima model:
+```{r}
+sarima_forecast <- sarima.for(training_b2[,"energy"], n.ahead = length(testing_b2[,"energy"]),
+ p=0,d=1,q=1, P=1, D=1, Q=0, S=12)
+
+#MAPE(sarima_forecast$pred, testing)
+mae(sarima_forecast$pred, testing_b2[,"energy"])
+
+```
+
+## Holt winters
+
+```{r}
+# Building 2
+autoplot(building_2_weekly_ts[,"energy"])
+building_2_weekly_ts.fc <- HoltWinters(training_b2[,"energy"])
+#building_2_weekly_ts.fc$fitted
+plot(building_2_weekly_ts.fc)
+plot(forecast(building_2_weekly_ts.fc, h=52))
+lines(testing_b2[,"energy"], col="red")
+
+```
+
+## Arima including external regressors
+
+We decide to include also other variables to our model. As discussed in Feature Engineering section, we chose sun, sunHour, uvIndex and cloudcover, as we believe they may be relevant for our prediction.
+```{r}
+arima_b2 <- auto.arima(training_b2[,"energy"], xreg=training_b2[,c("sun","sunHour", "uvIndex", "cloudcover")])
+
+plot(forecast(arima_b2, xreg=testing_b2[,c("sun", "sunHour", "uvIndex", "cloudcover")]))
+lines(testing_b2[,"energy"], col="red")
+```
+
+
+## Plot residuals of all models for building 2
+
+```{r}
+# plot residuals
+
+# from naive forecast
+plot(cumsum(abs(forecast(arima_basic, h=52)$mean - testing_b2[,"energy"])),type="l", col="red")
+# from holt
+lines(cumsum(abs(forecast(building_2_weekly_ts.fc, h=52)$mean - testing_b2[,"energy"])),type="l", col="brown")
+# from sarima
+lines(cumsum(abs(sarima_forecast$pred -testing_b2[,"energy"])),type="l", col="orange")
+
+lines(cumsum(abs(forecast(arima_b2, xreg=testing_b2[,c("sun", "sunHour", "uvIndex", "cloudcover")])$mean -testing_b2[,"energy"])),type="l", col="blue")
+```
+
+Arima model with external regressors shows the best prediction of energy on building 2. Therefore, we decide to use this model for buildings 5 and 8 as well.
+
+Here are the final models for buildings 5 and 8, using Arima with external regressors.
+
+Arima for building 5:
+```{r}
+arima_b5 <- auto.arima(training_b5[,"energy"], xreg=training_b5[,c("sun","sunHour", "uvIndex", "cloudcover")])
+
+plot(forecast(arima_b5, xreg=testing_b5[,c("sun", "sunHour", "uvIndex", "cloudcover")]))
+lines(testing_b5[,"energy"], col="red")
+```
+
+Arima for building 8:
+```{r}
+arima_b8 <- auto.arima(training_b8[,"energy"], xreg=training_b8[,c("sun","sunHour", "uvIndex", "cloudcover")])
+
+plot(forecast(arima_b8, xreg=testing_b8[,c("sun", "sunHour", "uvIndex", "cloudcover")]))
+lines(testing_b8[,"energy"], col="red")
+```
+
+
