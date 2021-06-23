@@ -1,0 +1,489 @@
+# EDA
+
+Summary of all the datasets
+
+```{r}
+# Building 2
+summary(building_2_sun[,sun])
+summary(building_2[,energy_produced])
+# Weather
+# (weather)
+```
+
+As you can see, the range of values of energy_produced feature in the building_2 is significantly different from all the other two corresponding features of other datasets, even though the median and the mean are quite similar to others.
+
+```{r}
+# Building 5
+summary(building_5_sun[,sun])
+summary(building_5[,energy_produced])
+```
+
+
+```{r}
+# Building 8
+summary(building_8_sun[,sun])
+summary(building_8[,energy_produced])
+```
+
+
+From the summary functions we can see that there are no NA values. Regarding the outliers, at building 2 there are some really extreme values, but the rest seems to be fine.
+
+Let us count NAs if there are any:
+
+```{r}
+sum(is.na(building_2_sun))
+sum(is.na(building_2))
+sum(is.na(building_5_sun))
+sum(is.na(building_5))
+sum(is.na(building_8_sun))
+sum(is.na(building_8))
+```
+
+No NAs found in any of the datasets!
+
+Now let us see some boxplots, which potentially show some outliers
+```{r}
+plot_ly(building_2, y=~energy_produced, type="box") %>% layout(title = "building_2")
+plot_ly(building_2_sun, y=~sun, type="box") %>% layout(title = "building_2_sun")
+plot_ly(building_5, y=~energy_produced, type="box") %>% layout(title = "building_5")
+plot_ly(building_5_sun, y=~sun, type="box") %>% layout(title = "building_5_sun")
+plot_ly(building_8, y=~energy_produced, type="box") %>% layout(title = "building_8")
+plot_ly(building_8_sun, y=~sun, type="box") %>% layout(title = "building_8_sun")
+```
+All buildings have some number of outliers, especially above the maximum.
+
+Now let us see the distributions of the data
+
+```{r}
+a <- density(building_2[,energy_produced])
+b <- density(building_2_sun[,sun])
+c <- density(building_5[,energy_produced])
+d <- density(building_5_sun[,sun])
+e <- density(building_8[,energy_produced])
+f <- density(building_8_sun[,sun])
+
+fig1 = plot_ly(x=a$x, y=a$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Energy produced of building 2")
+fig2 = plot_ly(x=b$x, y=b$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Sun ratiation of building 2")
+fig3 = plot_ly(x=c$x, y=c$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Energy produced of building 5")
+fig4 = plot_ly(x=d$x, y=d$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Sun ratiation of building 5")
+fig5 = plot_ly(x=e$x, y=e$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Energy produced of building 8")
+fig6 = plot_ly(x=f$x, y=f$y, type= "scatter", mode = "lines", fill = "tozeroy", name="Sun ratiation of building 8")
+
+fig <- subplot(fig1, fig2, fig3, fig4, fig5, fig6, nrows = 6)
+fig
+```
+
+Distributions seem to be normal, however we can see that there is a number of extreme values, basically what we saw in the boxplots as well. Also, energy produced of building 2 is of different range compared to others, which is weird.
+
+## Building 2
+
+Sun radiation:
+
+```{r}
+building_2_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    line = list(color='#ff7f0e')
+  )
+```
+
+Here, in the plot above, we can say that the most of sun radiation of building 2 takes place in the middle of summer, while the least in the winter, what makes complete sense.
+
+Energy produced
+
+```{r}
+plot_ly(
+    data=building_2,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    line = list(color = '#1f77b4')
+)
+```
+
+We can see that this data is not normal, because it has some really extreme values. So we will have to deal with outliers somehow.
+
+## Building 5
+
+Sun radiation:
+
+```{r}
+building_5_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    line = list(color='#ff7f0e')
+  )
+```
+
+The same information as with building 2, sun radiation, what makes sense.
+
+Energy produced
+
+```{r}
+plot_ly(
+    data=building_5,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    line = list(color = '#1f77b4')
+)
+```
+
+This looks good, and the plot for building 2 should also look similar to this.
+As with sun radiation, the most amount of energy produced is in the summer seasons and the least in winter seasons, which also indicates some decent correlation between these two features.
+
+Plotting sun radiation vs energy produced on one plot
+
+```{r}
+building_5_sun %>%
+  plot_ly(
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun radiation",
+    line = list(color='#ff7f0e')
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_5,
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="energy produced",
+    yaxis = "y2",
+    line = list(color = '#1f77b4')
+  ) %>%
+  layout(
+    title = "Building 5",
+    yaxis2 = list(
+      tickfont = list(color = '#ff7f0e'), 
+      overlaying = "y",
+      side = "right",
+      title = "second y axis - energy"
+    )
+  )
+```
+
+By rescaling the two data sets, we plotted them together. And it clearly shows that when the sun radiation is higher, there is a proportional growth in the produced energy, so there is correlation!
+
+## Building 8
+
+```{r}
+building_8 %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="enery produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_8_sun,
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun",
+    yaxis = "y2"
+  ) %>%
+  layout(
+    title = "Building 8",
+    yaxis2 = list(
+      tickfont = list(color = "orange"), # color of 2nd y axis
+      overlaying = "y",
+      side = "right",
+      title = "sun radiation" # title of 2nd y axis
+    )
+  )
+```
+
+We can again see that the sun radiation and energy produced is tightly linked together (correlation).
+
+Aggregated weekly (building 8):
+
+```{r}
+building_8[, .(energy_produced=sum(energy_produced)),
+              by=.(timestamp=floor_date(timestamp, "weeks"))] %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="enery produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_8_sun[, .(sun=sum(sun)),
+                        by=.(timestamp=floor_date(timestamp, "weeks"))],
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    name="sun",
+    yaxis = "y2"
+  ) %>%
+  layout(
+    title = "Building 8",
+    yaxis2 = list(
+      tickfont = list(color = "orange"), # color of 2nd y axis
+      overlaying = "y",
+      side = "right",
+      title = "sun radiation" # title of 2nd y axis
+    )
+  )
+```
+
+But are there maybe other factors that could influence the energy production?
+
+## Weather
+
+Let's try to plot how the clouds influence the produced energy:
+
+```{r}
+monthly_weather <- weather[, .(monthly_avg=mean(cloudcover)),
+                           by=.(date=floor_date(date_time, "weeks"))]
+
+monthly_weather %>%
+  plot_ly(
+    x=~date,
+    y=~monthly_avg,
+    hoverinfo= "text",
+    name="Monthly cloudcover",
+    type="scatter",
+    mode="lines+markers",
+    marker=list(size=0.5)
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_5_sun[, .(daily_avg=mean(sun)), 
+                        by=.(day=floor_date(timestamp, "weeks"))],
+    x=~day,
+    y=~daily_avg,
+    type="scatter",
+    mode="lines",
+    name="Monthly average sun"
+  )
+```
+
+We can see that our weather data is accurate, because when there is a higher cloudcover, there are less sunshine.
+
+# Preprocessing
+
+## Outliers, NAs
+
+### Building 2
+
+If we take a closer look at building 2:
+
+```{r}
+plot_ly(building_2, y=~energy_produced, type="box")
+```
+
+We can see that indeed there are some extreme values.
+
+```{r}
+building_2 %>%
+  plot_ly(
+    x=~timestamp,
+    y=~energy_produced,
+    type="scatter",
+    mode="lines",
+    name="enery produced"
+  ) %>%
+  add_trace(
+    inherit = F,
+    data=building_2_sun,
+    x=~timestamp,
+    y=~sun,
+    type="scatter",
+    mode="lines",
+    opacity=0.5,
+    name="sun"
+  )
+```
+
+If we plot both the energy produced and the sun radiation, we can see that there is nothing extreme anomaly in the sunshine, therefore those outliers cannot be explained and most likely are wrong values.
+
+As on the other building the range of produced energy is between 0 and 100, we have decided to cut off the outliers here based on this criteria.
+
+```{r}
+building_2 <- building_2[energy_produced < 100 & energy_produced >= 0]
+```
+
+### Weather
+
+```{r}
+colSums(is.na(weather))
+```
+
+## Merging the data
+
+```{r}
+# --------------- building 2
+b2_joined <- left_join(building_2, building_2_sun, 
+                       by = c("timestamp" = "timestamp"))
+summary(b2_joined)
+# aggregate daily
+
+building2 <- b2_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building2)
+
+building2_weather <- left_join(building2, weather, 
+                               by = c("Day" = "date_time"))
+
+
+# --------------- building 5
+b5_joined <- left_join(building_5, building_5_sun, 
+                       by = c("timestamp" = "timestamp"))
+b5_joined <- na.omit(b5_joined) # remove the last day --> bc it has NAs
+summary(b5_joined)
+# aggregate daily
+building5 <- b5_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building5)
+
+building5_weather <- left_join(building5, weather, 
+                               by = c("Day" = "date_time"))
+
+# --------------- building 8
+b8_joined <- left_join(building_8, building_8_sun, 
+                       by = c("timestamp" = "timestamp"))
+summary(b8_joined)
+# aggregate daily
+building8 <- b8_joined[, .(daily_total_sun=sum(sun), daily_total_energy=sum(energy_produced)),
+                       by=.(Day=floor_date(timestamp, "days"))]
+summary(building8)
+
+building8_weather <- left_join(building8, weather, 
+                               by = c("Day" = "date_time"))
+```
+
+# Feature engineering
+
+Aggregating data to have daily, weekly and monthly measures, so it makes more sense in terms of business question and its context
+
+```{r}
+############# Daily data aggregated
+building_2_sun_daily <- building_2_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_2_daily <- building_2[, .(daily_sum=sum(energy_produced)),
+                                 by=.(Day=floor_date(timestamp, "days"))]
+
+building_5_sun_daily <- building_5_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_5_daily <- building_5[, .(daily_sum=sum(energy_produced)),
+                                 by=.(Day=floor_date(timestamp, "days"))]
+
+building_8_sun_daily <- building_8_sun[, .(daily_sum=sum(sun)),
+                                         by=.(Day=floor_date(timestamp, "days"))]
+building_8_daily <- building_8[, .(daily_sum=sum(energy_produced)),
+                                by=.(Day=floor_date(timestamp, "days"))]
+
+############# Weekly data aggregated
+building_2_sun_weekly <- building_2_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_2_weekly <- building_2[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+
+building_5_sun_weekly <- building_5_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_5_weekly <- building_5[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+
+building_8_sun_weekly <- building_8_sun[, .(weekly_sum=sum(sun)),
+                                       by=.(Week=floor_date(timestamp, "weeks"))]
+building_8_weekly <- building_8[, .(weekly_sum=sum(energy_produced)),
+                               by=.(Week=floor_date(timestamp, "weeks"))]
+
+############# Monthly data aggregated
+building_2_sun_monthly <- building_2_sun[, .(monthly_sum=sum(sun)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_2_monthly <- building_2[, .(monthly_sum=sum(energy_produced)),
+               by=.(Month=floor_date(timestamp, "months"))]
+
+building_5_sun_monthly <- building_5_sun[, .(monthly_sum=sum(sun)),
+               by=.(Month=floor_date(timestamp, "months"))]
+building_5_monthly <- building_5[, .(monthly_sum=sum(energy_produced)),
+               by=.(Month=floor_date(timestamp, "months"))]
+
+building_8_sun_monthly <- building_8_sun[, .(monthly_sum=sum(sun)),
+              by=.(Month=floor_date(timestamp, "months"))]
+building_8_monthly <- building_8[, .(monthly_sum=sum(energy_produced)),
+              by=.(Month=floor_date(timestamp, "months"))]
+```
+
+## Time series and decomposing
+
+Here we create time series objects out of monthly and weekly aggregated data and decompose them in order to see their components (trend, data, seasonal component and remainder)
+
+```{r}
+#------------------------ Time series and decomposing
+
+####### Monthly
+
+building_2_monthly_ts = ts(building_2_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+#autoplot(building_2_monthly_ts)
+autoplot(decompose(building_2_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+
+building_5_monthly_ts = ts(building_5_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+#autoplot(building_5_monthly_ts)
+autoplot(decompose(building_5_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+
+building_8_monthly_ts = ts(building_8_monthly[, "monthly_sum"], frequency = 12, start = c(2016,8))
+#autoplot(building_8_monthly_ts)
+autoplot(decompose(building_8_monthly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+
+
+####### Weekly
+
+building_2_weekly_ts = ts(building_2_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+#autoplot(building_2_weekly_ts)
+autoplot(decompose(building_2_weekly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+
+building_5_weekly_ts = ts(building_5_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+#autoplot(building_5_weekly_ts)
+autoplot(decompose(building_5_weekly_ts, type="additive"))
+#autoplot(decompose(energy_produced - decompose(energy_produced)$seasonal))
+
+building_8_weekly_ts = ts(building_8_weekly[, "weekly_sum"], frequency = 365.25/7, start = c(2016,8))
+#autoplot(building_8_weekly_ts)
+autoplot(decompose(building_8_weekly_ts, type="additive"))
+```
+
+The seasonal component shows us how with the time data gets to the same point every month/week, and from the seasonal component the future models will be built upon.
+
+The remainders (noise) of these time series seem to be normally distributed (white noice), which indicates that future models will potentially learn from the data and the data is not bad.
+
+The trends of the time series are not that smooth in general, which means the predictive power of the models in the future might be quite low, however by combining both seasonal and trend components the predictive power will increase in anyway, since these both are the most important for the future models.
+
+### Checking for stationarity
+
+Stationarity basically means that the statistical properties of the time series data do not change over time, what is important for many analytical tools and future modeling.
+
+```{r}
+adf.test(building_2_monthly_ts)
+adf.test(building_5_monthly_ts)
+adf.test(building_8_monthly_ts)
+```
+
+H0: not stationary
+
+H1: stationary
+
+-\> since the p-vals are less that 0.05 (rejecting H0), all 3 time series objects are stationary, therefore modeling should go smoothly!
